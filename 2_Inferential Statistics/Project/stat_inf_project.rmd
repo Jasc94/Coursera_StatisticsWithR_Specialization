@@ -1,0 +1,141 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `gss`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data
+
+We can see in the ICPSR Appendix A that the sampling was very through using the stratification method and then also applying blocks to variables such as sex, age or employment status. In addition to this, interviewers received further instructions regarding the data collection process.
+
+It's fair to assume random sampling for this dataset and hence, conclusions can be generalized.
+
+On the other hand, since it isn't an experiment, where participants can be randomly assigned, we can't conclude about causal relations.
+
+* * *
+
+## Part 2: Research question
+
+I would like to see if there is any correlation between race and the confidence in banks and finance institutions.
+
+This means, does any race in particular have more confidence in one or more institutions? For instance, do black folks have greater or smaller confidence in banks than white people?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+For the research, I will use the following variables:
+
+Background variables:
+- race: Race of respondent
+- degree: RS highest degree
+
+Societal Concerns
+Confidence in Institutions
+- confinan: confidence in banks and financial institutions
+- conclerg: confidence in organized religion
+- conjudge: confidence in United States Supreme Court
+- consci: confidence in scientific community
+
+As general approach, I will first have a look at the frequency table. This will help identify some very strong patterns. After that, I will do a Chi-Square Independence Test, as the comparisons will include two categorical variables with >2 levels. This will definetely determine if there's any significant relation between the variables.
+
+Let's start with the relation race - confidence in banks
+
+```{r}
+# First, I filter the data by the year 2012
+gss_2012 <- gss %>% filter(year == "2012")
+
+# Then, I create the table
+race_confinan_2012 <- table(gss_2012$race, gss_2012$confinan)
+
+# Finally, I create the frequency table, showing the row percentages
+prop.table(race_confinan_2012, 1)
+```
+
+From this table, we can already see that white people tend to have less confidence in bank and finance institutions, as we can find a lower percentage of this population declaring "A Great Deal" and "Only Some" confidence, compared with the other two groups. Black people are the ones with the most confidence. However, difference isn't that big.
+
+Let's plot this too, so that we can have a clear image. For the plot, we will use the relative frequencies, as for the absolute ones, we have a higher amount of white people than the rest, making the plot very misleading.
+
+```{r}
+barplot(prop.table(race_confinan_2012, 1), legend.text = TRUE, beside = TRUE, main = "Relation between race and confidence in banks (2012)", xlab = "confidencen in banks", ylab = "% within race")
+```
+
+We can clearly identify in the plot, what we already saw in the frequency table. White people are the ones with the least confidence, whereas black people and other people have more confidence.
+
+
+
+* * *
+
+## Part 4: Inference
+In order to do inference on this data, we first must check if the conditions for our test (Chi-square Test of Independence in this case) hold.
+
+1) Independence --> As we saw earlier, observations were collected through random sampling. So, we can check this box.
+
+2) Sample size: each particular scenario must have at least 5 expected cases. 
+--> For this one, we will check the table of observed cases:
+
+```{r}
+race_confinan_2012
+
+# As we can see, all observed values are > 5. Let's check the expected counts
+# 1) I calculate the relative values per column ("A great deal", "Only some", ...)
+total_column_val <- margin.table(race_confinan_2012, 2)
+total_obs <- 149 + 678 + 498
+rel_column_val <- total_column_val / total_obs
+# 2) Now I need the total counts per row
+total_row_val <- margin.table(race_confinan_2012, 1)
+white_exp <- total_row_val[1] * rel_column_val
+black_exp <- total_row_val[2] * rel_column_val
+others_exp <- total_row_val[3] * rel_column_val
+matrix_exp <- matrix(c(white_exp, black_exp, others_exp), nrow = 3, byrow = TRUE, dimnames = list(c("White", "Black", "Others"), c("A Great Deal", "Only Some", "Hardly Any")))
+print(matrix_exp)
+```
+
+With this, we have already proven our second condition for the Chi Square test to be true. Now we can proceed with the test.
+
+Let's check if this difference is significant at all:
+H0 (null-hypothesis): There is no significant difference between the expected frequencies and the observed ones. Hence, there is no relation between race and the confidence in banks.
+
+HA (alternative-hypothesis): There is a significant differente between the expected frequencies and the observed ones. Hence, there is a relation between race and the confidence in banks.
+
+```{r}
+chisq.test(race_confinan_2012)
+```
+
+We get a high X-squared statistic, but the p-value is still higher than 0.05. Based on this, we fail to reject the H0, so we can't confirm that there is a relation between race and confidence in banks.
+
+A look at the Chi-square distribution and the probability density for our Chi-Square statistic.
+```{r}
+curve(dchisq(x, df = 4), from = 0, to = 40, main = "Chi-Square Distribution for 4 df", ylab = "Density")
+x_vector = seq(7.7, 40)
+p_vector = dchisq(x_vector, df = 4)
+polygon(c(x_vector, rev(x_vector)), c(p_vector, rep(0, length(p_vector))), col = adjustcolor("blue", alpha = 0.3), border = NA)
+```
+

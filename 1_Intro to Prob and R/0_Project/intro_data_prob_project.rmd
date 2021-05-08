@@ -1,0 +1,243 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+Make sure your data and R Markdown files are in the same directory. When loaded
+your data file will be called `brfss2013`. Delete this note when before you submit 
+your work. 
+
+```{r load-data}
+load("~/Downloads/1_Data Science/Intro to Prob and R/0_Project/brfss2013.rdata")
+```
+
+
+* * *
+
+## Part 1: Data
+First, we need to determine the validity of the conclusions from these data. If:
+-> Random sampled -> conclusions are generalizable
+-> Random assignment -> we could stablish causal relations between variables
+
+Since the data comes from a "surveillance system designed to measure behavioral risk factors ...", we can conclude that it is an observational study. This means,
+conclusions cannot establish causal relations because observed participants are not randomly assigned to different groups. The study just observes their behaviours.
+However, we can find correlation between variables.
+
+On the other hand, we can accept the observations as random sampled: https://www.cdc.gov/brfss/about/brfss_faq.htm
+They mention in the second question (How do you conduct the survey?), that they use Random Digit Dialing (RDD) techniques. Although this may be sensitive to a non-response bias, since not everyone is as likely to respond, we can accept the data as random enough. Hence, the study is generalizable
+
+Conclusion: randomly sampled but not randomly assigned. We can establish correlation between variables, and those would be generalizable.
+
+
+## Part 2: Research questions
+
+**Research question 1:**
+First, we would like to see what the relation between hours of sleep and health status looks like. For this purpose, we explore the following two variables:
+-> General Health (genhlth) : It goes from Excellent (1) to poor (5)
+-> How Much Time Do You Sleep (sleptim1) : discrete variable with the amount of hours slept, going from 0 to 24
+
+
+**Research question 2:**
+Secondly, we want to determine if the lack of sleep has a bigger impact on mental or physical health, if different at all. For this, we will make use of the following variables:
+-> Number Of Days Physical Health Not Good in the last 30 days (physhlth)
+-> Number Of Days Mental Health Not Good in the last 30 days (menthlth)
+
+**Research quesion 3:**
+Lastly, we would like to see what kind of relation there is between smoking and hours of sleep and health. In case there is any, we also want to explore how strong it is. In this case, we will use the following variable:
+-> Frequency Of Days Now Smoking (smokday2)
+
+* * *
+  
+## Part 3: Exploratory data analysis
+
+NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
+button (green button with orange arrow) above. Make sure that your code is visible
+in the project you submit. Delete this note when before you submit your work.
+
+**Research question 1:**
+
+1) Let's explore a bit deeper the second variable (sleptim1) by checking the distribution of this variable with a plot
+```{r}
+ggplot(data = brfss2013, aes(x = sleptim1)) + geom_histogram(binwidth = 1) + scale_x_continuous(name="Hours of sleep", limits=c(0, 24))
+```
+We can see a symmetric and unimodal distribution, fairly similar to a normal distribution. Most participants get around 7-8 hours sleep.
+
+2) Let's dig into this a bit more:
+
+```{r}
+brfss2013 %>% group_by(sleptim1) %>% summarise(count = n())
+brfss2013 %>% filter(!(is.na(sleptim1))) %>% summarise(sleptim1_mean = mean(sleptim1), sleptim1_median = median(sleptim1), sleptim1_sd = sd(sleptim1), sleptim1_min = min(sleptim1), sleptim1_max = max(sleptim1))
+```
+The first line of code shows us # occurrences for every level. This means: how many people sleep 1, 2, 3, ... 24 hours a day. Additionally, we find three extra values:
+-> 103 : don't know / not sure
+-> 450 : refused
+-> NA
+
+We will filter this data in the next step.
+
+Other things to mention: mean and median are very close (as expected for a symmetric and unimodal distribution), giving us a value of approx. 7 hours of sleep.
+The standard deviation is approx. 1,6 hours, so there is not much of variability, making the mean representative.
+
+3) Now, we would like to group the hours of sleep to make easier a posterior cross-analysis with general health. For that, we know that the optimal amount of sleep for adults (> 18) is between 7 and 9 hours. We will group the observations as follows:
+
+- Very little (1) : <4 hours of sleep
+- Below optimal (2) : 4 - 7 hours of sleep
+- Optimal (3) : 7 - 9 hours of sleep
+- Above optimal (4) : 9 - 12 hours of sleep
+- Too much (5) : > 12 hours of sleep
+- No info (6) : the rest (values 103 and 450) -> we will filter this later
+
+```{r}
+brfss2013 <- brfss2013 %>% filter(!is.na(sleptim1)) %>% mutate(sleep_amount = ifelse(sleptim1 < 4, 1, ifelse(sleptim1 >= 4 & sleptim1 < 7, 2, ifelse(sleptim1 >= 7 & sleptim1 < 9, 3, ifelse(sleptim1 >= 9 & sleptim1 < 12, 4, ifelse(sleptim1 >= 12 & sleptim1 <=24, 5, 6))))))
+brfss2013$sleep_amount <- ordered(brfss2013$sleep_amount, levels = c(1, 2, 3, 4, 5, 6), labels = c("Very little", "Below optimal", "Optimal", "Above optimal", "Too much", "No info"))
+brfss2013 %>% group_by(sleep_amount) %>% summarise(count = n()) %>% arrange(desc(-sleep_amount))
+```
+
+With the first line of code, we create the new variable called "sleep_amount" where we categorize the observations in the groups mentioned before. Then, we label the different values (1 = Very little, 2 = Below optimal, ...). And last we check the results.
+
+Now we have everything we need for our freq table comparing general health and hours of sleep:
+
+```{r}
+ftable(table(brfss2013$sleep_amount, brfss2013$genhlth))
+prop.table(table(brfss2013$sleep_amount, brfss2013$genhlth), margin = 1)
+ggplot(data = brfss2013, aes(x = genhlth, fill = sleep_amount)) + geom_bar()
+```
+The first code return us hte raw data distributed in our table. We can already see some patterns, although it is more useful to have the frequencies instead and that's what the second line of code does.
+In the frequency table we see what percentage has each column over the total of the row. Example: we add all columns in "Very little" and then we divide each column by this total. This way, we can determine what percentage of the people who sleep "Very little" feels "Excellent", "Very good", and so on... Other way to see it is: how likely is it for a person who sleeps very little to feel Excellent ?
+
+We can draw the following conclusions from the table and graph:
+1) A person with an optimal sleep is more likely to feel either Excellent (20.2%) or Very good (36.2%) than any other person
+2) The farther we move away from this optimal, the less likely it is for the participant to feel Excelent or Very good
+3) Very little sleep yields worse health perception than too much sleep. Almost 30% of people sleeping very little, have a poor general health, whereas this number goes down to 22,4% of the people sleeping too much.
+
+As mentioned at the beginning of the project, we cannot establish causal relations, although we see a strong correlation between hours of sleep and general health perception.
+
+**Research question 2:**
+1) We do soem descriptive analysis of physhlth to see what it looks like
+```{r}
+brfss2013 %>% group_by(physhlth) %>% summarise(count = n())
+```
+
+As for the previous question, we have here to many values. So, let's group them as follows:
+-> None (1)               : 0 days Physical Health not Good
+-> Less than 10 days (2)  : 0 - 10 days Physical Health not Good
+-> Less than 20 days (3)  : 10 - 20 days Physical Health not Good
+-> Less than 30 days (4)  : 20 - 30 days Physical Health not Good
+-> No info (5)            : >30
+
+```{r}
+brfss2013 <- brfss2013 %>% filter(!is.na(physhlth)) %>% mutate(physhlth_g = ifelse(physhlth == 0, 1, ifelse(physhlth > 0 & physhlth <= 10, 2, ifelse(physhlth > 10 & physhlth <= 20, 3, ifelse(physhlth > 20 & physhlth <= 30, 4, 5)))))
+brfss2013$physhlth_g <- ordered(brfss2013$physhlth_g, levels = c(1, 2, 3, 4, 5), labels = c("None", "<10 days", "<20 days", "<30 days", "No info"))
+brfss2013 %>% group_by(physhlth_g) %>% summarise(count = n())
+```
+
+Now that we have the info as we need it, let's check how the physical health varies depending on the hours of sleep
+```{r}
+prop.table(table(brfss2013$sleep_amount, brfss2013$physhlth_g), margin = 1)
+```
+
+As expected, participants with Optimal time of sleep are more likely to have no single bad day (68,5%). On the other hand, those sleeping very little have the highest amount of bad days within the last month (37,5%). This is consistent with what we already know.
+
+Now, we want to do the same for mental health and then compare results with physical health. This way, we will see whether hours of sleep is stronger related to physical or mental health.
+
+Let's start by checking our menthlth variable:
+```{r}
+brfss2013 %>% group_by(menthlth) %>% summarise(count = n())
+```
+
+Similar scenario as for physhlth. So, now we proceed similarly as before:
+```{r}
+brfss2013 <- brfss2013 %>% filter(!is.na(menthlth)) %>% mutate(menthlth_g = ifelse(menthlth == 0, 1, ifelse(menthlth > 0 & menthlth <= 10, 2, ifelse(menthlth > 10 & menthlth <= 20, 3, ifelse(menthlth > 20 & menthlth <= 30, 4, 5)))))
+brfss2013$menthlth_g <- ordered(brfss2013$menthlth_g, levels = c(1, 2, 3, 4, 5), labels = c("None", "<10 days", "<20 days", "<30 days", "No info"))
+brfss2013 %>% group_by(menthlth_g) %>% summarise(count = n())
+```
+
+Now, we can compare our new variable menthlth_g with the hours of sleep:
+```{r}
+prop.table(table(brfss2013$sleep_amount, brfss2013$menthlth_g), margin = 1)
+```
+
+We observe a very similar relation. Participants with optimal hours of sleep are also more likely to have had no bad mental health day in the last month (74.6%). On the other hand, participants with very little or too much sleep, are the ones with the highest likelihood of having more bad mental health days, 32.6% and 18.4% respectively.
+
+The last step will be comparing both (1) the relation between hours of sleep and physical health and (2) the relation between hours of sleep and mental health. For this purpose, we will save the propotion tables that we created in matrixes and then, we are going to substract one to the other. So:
+1) frequency-table(hours sleep, physical health) -> matrix1
+2) frequency-table(hours sleep, mental health) -> matrix2
+3) matrix1 - matrix2
+
+The resulting matrix will give as the different in the relations, meaning the following:
+-> if result > 0 -> there is a stronger link between physical health and hours of sleep
+-> if result < 0 -> there is a stronger link between mental health and hours of sleep
+
+and this applies for every case in the resulting matrix.
+
+```{r}
+matrix_phys = as.matrix(prop.table(table(brfss2013$sleep_amount, brfss2013$physhlth_g), margin = 1))
+matrix_ment = as.matrix(prop.table(table(brfss2013$sleep_amount, brfss2013$menthlth_g), margin = 1))
+matrix_diff = matrix_phys - matrix_ment
+matrix_diff
+```
+
+Let's check an example to make the idea clear. For instance, Optimal | None: in this case, we have -0.0601... meaning that, a participant with a Optimal hours of sleep is more likely to have None bad mental days than None bad physical days, and it makes sense, because from previous data we know:
+A) A participant with Optimal time of sleep has no bad physical day 68,6% of the time
+B) A participant with Optimal time of sleep has no bad mental day 74,6% of the time
+
+So, approximately 6% more of the participants (with Optimal hours of sleep) had (no mental health bad day) than (no physical health bad day)
+
+
+**Research question 3:**
+To conclude, we want to see the relation between smoking and the variables hours of sleep and health. For this, we will start by checking smoke habits against hours of sleep using a plot:
+
+```{r}
+brfss2013 %>% group_by(smokday2) %>% summarise(count = n())
+brfss2013 %>% subset(!is.na(smokday2)) %>% ggplot(aes(x = smokday2, fill = sleep_amount)) + geom_bar()
+```
+
+We can see that most of the people don't smoke. Now, the interesting thing appears in the graph, where we can suspect that there is a relation between smoking and having an optimal hours of sleep. To gain some extra insights on this, we will cross-check the data in the variable smokeday2 with the data in the variable sleep_amount:
+```{r}
+prop.table(table(brfss2013$smokday2, brfss2013$sleep_amount), margin = 1)
+```
+
+From this table we can draw already some good conclusions:
+1) 60% of the people who don't smoke at all, have optimal hours of sleep, whereas this rate goes below 50% for those who smoke (even some days)
+2) The percentage of people who smoke every day and sleep very little is almost 3 times higher than the percentage of people who do not smoke at all and sleep very little.
+3) Within "Above Optimal", there are (comparatively) more non-smokers than smokers.
+4) We can establish a strong negative relation between smoking and hours of sleep: people smoking more are usually those who also sleep less
+
+To conclude, we can perform a chi-square test to confirm whether or not there is dependency between smoking and hours of sleep:
+```{r}
+brfss2013_2 <- brfss2013 %>% filter(sleep_amount != "No info")
+matrix_smoke_sleep <- as.matrix(table(brfss2013_2$smokday2, droplevels(brfss2013_2$sleep_amount)))
+chisq.test(matrix_smoke_sleep)
+```
+
+The test returned a p-value much lower than 0.05, so we can reject the null hypothesis that the variables smokday2 and sleep_amount are independent. So, this means, both variables are actually dependent on each other.
+
+If there is relation between general health and hours of sleep, and also there is relation between smoking habits and hours of sleep, it is very likely that there is a connection between general health and smoking habits too.
+
+Let's check that by first doing our contingency table:
+```{r}
+table(brfss2013_2$genhlth, brfss2013_2$smokday2)
+prop.table(table(brfss2013_2$genhlth, brfss2013_2$smokday2), margin = 2)
+matrix_hlth_smoke <- as.matrix(table(brfss2013_2$genhlth, brfss2013_2$smokday2))
+chisq.test(matrix_hlth_smoke)
+```
+From the contingency table, we can see that feeling "Excellent" or "Very good" is more common among the non-smokers, being 15,2% and 32,2% the frequency. However, for the smokers this ratio goes down, being less common feeling "Excellent" or "Very good" among the daily smokers 
+
+In this case, the p-value is also much lower than 0.05. Based on this, we would reject the null hypothesis that both variables are independent.
+
+So, to conclude, we see that the general health perception and hours of sleep are (negatively) dependent on smoking. 
